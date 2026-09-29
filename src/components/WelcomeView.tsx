@@ -90,7 +90,7 @@ export const WelcomeView: React.FC<WelcomeViewProps> = ({
             onClick={onStartSendWish}
             className="w-full sm:w-auto px-8 py-4 rounded-full bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-slate-950 font-semibold text-sm sm:text-base tracking-wide shadow-[0_0_25px_rgba(245,158,11,0.35)] hover:shadow-[0_0_35px_rgba(245,158,11,0.55)] hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2.5"
           >
-            <span>Send a Birthday Star ✨</span>
+            <span>Send a Birthday Star 🌟</span>
             <ArrowRight className="w-4 h-4" />
           </button>
 

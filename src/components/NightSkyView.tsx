@@ -4,7 +4,6 @@ import { Wish } from '../types.ts';
 import { appConfig } from '../config/appConfig.ts';
 import { deleteWishApi } from '../lib/api.ts';
 import {
-  Sparkles,
   Plus,
   Home,
   X,
@@ -16,6 +15,9 @@ import {
   ShieldCheck,
   Trash2,
   AlertCircle,
+  Compass,
+  Moon,
+  Heart,
 } from 'lucide-react';
 import { celestialSound } from '../lib/audio.ts';
 
@@ -49,6 +51,16 @@ interface StardustParticle {
   color: string;
 }
 
+interface NightCloud {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  speed: number;
+  opacity: number;
+  puffs: Array<{ rx: number; ry: number; r: number }>;
+}
+
 export const NightSkyView: React.FC<NightSkyViewProps> = ({
   wishes,
   newlyAddedWishId,
@@ -78,6 +90,7 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stardustRef = useRef<StardustParticle[]>([]);
+  const cloudsRef = useRef<NightCloud[]>([]);
 
   // Listen for window resize
   useEffect(() => {
@@ -134,14 +147,14 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
 
       if (isNew) {
         // Newly added star arrives prominently near center-top
-        x = width * 0.5 + (Math.sin(idx * 2) * 25);
-        y = height * 0.38 + (Math.cos(idx * 2) * 20);
+        x = width * 0.5 + Math.sin(idx * 2) * 25;
+        y = height * 0.38 + Math.cos(idx * 2) * 20;
       } else {
         // Celestial Fibonacci spiral distribution
         const angle = idx * 137.5 * (Math.PI / 180);
         const r = Math.min(width, height) * 0.38 * Math.sqrt((idx + 1) / Math.max(7, wishes.length));
-        x = width / 2 + Math.cos(angle) * r + (Math.sin(idx * 3.7) * 24);
-        y = height / 2 + Math.sin(angle) * r * 0.72 + (Math.cos(idx * 3.1) * 20);
+        x = width / 2 + Math.cos(angle) * r + Math.sin(idx * 3.7) * 24;
+        y = height / 2 + Math.sin(angle) * r * 0.72 + Math.cos(idx * 3.1) * 20;
       }
 
       // Safe bounds within visible viewport
@@ -177,7 +190,71 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
     }
   };
 
-  // Canvas background rendering: Moon, faint constellation filaments, & cursor stardust
+  // Initialize soft luminous night clouds
+  useEffect(() => {
+    const { width, height } = dimensions;
+    const clouds: NightCloud[] = [
+      {
+        x: width * 0.1,
+        y: height * 0.22,
+        width: 380,
+        height: 120,
+        speed: 0.12,
+        opacity: 0.22,
+        puffs: [
+          { rx: -110, ry: 10, r: 65 },
+          { rx: -40, ry: -15, r: 85 },
+          { rx: 50, ry: 5, r: 75 },
+          { rx: 120, ry: 20, r: 55 },
+        ],
+      },
+      {
+        x: width * 0.62,
+        y: height * 0.16,
+        width: 440,
+        height: 140,
+        speed: 0.09,
+        opacity: 0.18,
+        puffs: [
+          { rx: -130, ry: 15, r: 70 },
+          { rx: -50, ry: -20, r: 90 },
+          { rx: 40, ry: -10, r: 80 },
+          { rx: 120, ry: 25, r: 60 },
+        ],
+      },
+      {
+        x: width * 0.25,
+        y: height * 0.68,
+        width: 480,
+        height: 150,
+        speed: 0.15,
+        opacity: 0.26,
+        puffs: [
+          { rx: -140, ry: 10, r: 80 },
+          { rx: -60, ry: -15, r: 100 },
+          { rx: 30, ry: -5, r: 90 },
+          { rx: 130, ry: 20, r: 70 },
+        ],
+      },
+      {
+        x: width * 0.78,
+        y: height * 0.76,
+        width: 420,
+        height: 130,
+        speed: 0.11,
+        opacity: 0.2,
+        puffs: [
+          { rx: -110, ry: 10, r: 70 },
+          { rx: -30, ry: -20, r: 85 },
+          { rx: 60, ry: 0, r: 75 },
+          { rx: 130, ry: 20, r: 60 },
+        ],
+      },
+    ];
+    cloudsRef.current = clouds;
+  }, [dimensions]);
+
+  // Canvas background rendering: Moon, night clouds, constellation filaments, & cursor stardust
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -189,25 +266,24 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
     canvas.width = width;
     canvas.height = height;
 
-    let frame = 0;
     const render = () => {
-      frame += 0.02;
       ctx.clearRect(0, 0, width, height);
 
-      // 1. Crescent Moon in upper sky
+      // 1. Crescent Moon in upper sky with soft atmospheric glow
       const moonX = width > 768 ? width * 0.88 : width * 0.82;
       const moonY = 85;
       const moonRadius = 24;
 
       const moonAura = ctx.createRadialGradient(moonX, moonY, 4, moonX, moonY, moonRadius * 4.5);
-      moonAura.addColorStop(0, 'rgba(254, 243, 199, 0.18)');
-      moonAura.addColorStop(0.5, 'rgba(199, 210, 254, 0.07)');
+      moonAura.addColorStop(0, 'rgba(254, 243, 199, 0.22)');
+      moonAura.addColorStop(0.5, 'rgba(199, 210, 254, 0.08)');
       moonAura.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = moonAura;
       ctx.beginPath();
       ctx.arc(moonX, moonY, moonRadius * 4.5, 0, Math.PI * 2);
       ctx.fill();
 
+      // Crescent Moon Body
       ctx.save();
       ctx.fillStyle = '#fef3c7';
       ctx.beginPath();
@@ -219,7 +295,50 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
       ctx.fill();
       ctx.restore();
 
-      // 2. Interactive user cursor / touch stardust motes
+      // 2. Soft, Luminous Night Clouds drifting across the sky
+      const clouds = cloudsRef.current;
+      for (const cloud of clouds) {
+        cloud.x += cloud.speed;
+        // Wrap around smoothly
+        if (cloud.x - cloud.width / 2 > width) {
+          cloud.x = -cloud.width / 2;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = cloud.opacity;
+
+        // Render organic cloud puffs with gentle radial gradients
+        for (const puff of cloud.puffs) {
+          const px = cloud.x + puff.rx;
+          const py = cloud.y + puff.ry;
+
+          const puffGrad = ctx.createRadialGradient(px, py, 5, px, py, puff.r);
+          puffGrad.addColorStop(0, 'rgba(30, 41, 59, 0.55)');
+          puffGrad.addColorStop(0.5, 'rgba(15, 23, 42, 0.35)');
+          puffGrad.addColorStop(0.85, 'rgba(30, 58, 138, 0.15)');
+          puffGrad.addColorStop(1, 'rgba(2, 6, 23, 0)');
+
+          ctx.fillStyle = puffGrad;
+          ctx.beginPath();
+          ctx.arc(px, py, puff.r, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Soft moonlight rim highlight on upper puffs
+          if (puff.ry < 0) {
+            const rimGrad = ctx.createRadialGradient(px, py - puff.r * 0.3, 2, px, py, puff.r);
+            rimGrad.addColorStop(0, 'rgba(224, 231, 255, 0.14)');
+            rimGrad.addColorStop(0.5, 'rgba(199, 210, 254, 0.05)');
+            rimGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = rimGrad;
+            ctx.beginPath();
+            ctx.arc(px, py, puff.r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.restore();
+      }
+
+      // 3. Interactive user cursor / touch stardust motes
       const particles = stardustRef.current;
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
@@ -240,7 +359,7 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
       }
       ctx.globalAlpha = 1;
 
-      // 3. Constellation filaments connecting stars
+      // 4. Constellation filaments connecting stars
       ctx.strokeStyle = 'rgba(251, 191, 36, 0.14)';
       ctx.lineWidth = 1;
       for (let i = 0; i < positionedStars.length; i++) {
@@ -281,7 +400,7 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
     };
 
     const addStardust = (x: number, y: number) => {
-      const colors = ['#fde68a', '#c7d2fe', '#fbcfe8', '#ffffff'];
+      const colors = ['#fde68a', '#c7d2fe', '#fed7aa', '#ffffff'];
       for (let i = 0; i < 2; i++) {
         stardustRef.current.push({
           x: x + (Math.random() * 14 - 7),
@@ -328,7 +447,7 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
       try {
         await navigator.share({
           title: `1st Birthday Blessing for Shams`,
-          text: `"${wish.message}" — for Baby Shams Moni ✨`,
+          text: `"${wish.message}" — for Baby Shams Moni`,
           url,
         });
       } catch {}
@@ -339,7 +458,7 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
 
   return (
     <div className="fixed inset-0 z-20 flex flex-col bg-[#05070e] text-slate-100 overflow-hidden select-none">
-      {/* Canvas Night Sky Backdrop (Nebula, Moon, Constellations, Stardust) */}
+      {/* Canvas Night Sky Backdrop (Nebula, Moon, Night Clouds, Constellations) */}
       <canvas ref={canvasRef} className="absolute inset-0 block w-full h-full pointer-events-none" />
 
       {/* Top Navigation Bar */}
@@ -353,8 +472,10 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
             <span className="hidden sm:inline">Home</span>
           </button>
 
-          <div className="px-3.5 py-1.5 rounded-full bg-amber-500/15 backdrop-blur-md border border-amber-400/25 text-xs sm:text-sm text-amber-200 font-medium shadow-lg">
-            <span className="font-semibold text-amber-300">{wishes.length}</span> {wishes.length === 1 ? 'Star' : 'Stars'} in Shams’s Sky
+          <div className="px-3.5 py-1.5 rounded-full bg-amber-500/15 backdrop-blur-md border border-amber-400/25 text-xs sm:text-sm text-amber-200 font-medium shadow-lg flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <span className="font-semibold text-amber-300">{wishes.length}</span>{' '}
+            {wishes.length === 1 ? 'Star' : 'Stars'} in Shams’s Sky
           </div>
         </div>
 
@@ -393,15 +514,15 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
         </div>
       </div>
 
-      {/* Floating Instructions */}
+      {/* Floating Instructions (clean celestial aesthetic without AI signs) */}
       <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 pointer-events-none text-center">
         <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-slate-950/70 backdrop-blur-md border border-white/10 text-[11px] sm:text-xs text-slate-300 shadow-md">
-          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+          <Moon className="w-3.5 h-3.5 text-amber-300" />
           <span>Tap any floating star to read its blessing</span>
         </div>
       </div>
 
-      {/* New Star Arrival Floating Toast Banner (Framer Motion) */}
+      {/* New Star Arrival Floating Toast Banner (Clean Celestial Theme) */}
       <AnimatePresence>
         {arrivalToastWish && (
           <motion.div
@@ -413,7 +534,7 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
             className="absolute top-24 left-1/2 -translate-x-1/2 z-40 px-5 py-2.5 rounded-full bg-gradient-to-r from-amber-500/25 via-yellow-500/30 to-amber-500/25 backdrop-blur-xl border border-amber-300/40 shadow-[0_10px_35px_rgba(245,158,11,0.35)] flex items-center gap-3 cursor-pointer pointer-events-auto"
           >
             <div className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center text-xs font-bold shadow-[0_0_12px_rgba(245,158,11,0.8)]">
-              ✨
+              🌟
             </div>
             <div className="text-xs">
               <span className="font-semibold text-amber-200">A new star has arrived!</span>{' '}
@@ -462,7 +583,7 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
               transition={{
                 duration: star.isNew ? 1.8 : 0.8,
                 delay: star.isNew ? 0.15 : (idx % 8) * 0.08,
-                ease: [0.16, 1, 0.3, 1], // Smooth spring-like easeOut
+                ease: [0.16, 1, 0.3, 1],
               }}
               className="-translate-x-1/2 -translate-y-1/2 cursor-pointer group"
               onClick={() => {
@@ -472,7 +593,7 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
               onMouseEnter={() => setHoveredWishId(star.wish.id)}
               onMouseLeave={() => setHoveredWishId(null)}
             >
-              {/* Continuous Gentle Floating Celestial Sway (Framer Motion) */}
+              {/* Continuous Gentle Floating Celestial Sway */}
               <motion.div
                 animate={{
                   y: [-5, 5, -5],
@@ -506,18 +627,6 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
                       transition={{ duration: 2.2, repeat: Infinity, delay: 0.7, ease: 'easeOut' }}
                       className="absolute -inset-6 rounded-full border border-yellow-200/40 pointer-events-none"
                     />
-                    {/* Gentle floating sparkles popping around new arrival */}
-                    <motion.span
-                      animate={{
-                        y: [-12, -26],
-                        opacity: [0, 1, 0],
-                        scale: [0.6, 1.2, 0.8],
-                      }}
-                      transition={{ repeat: Infinity, duration: 2.4, ease: 'easeInOut' }}
-                      className="absolute -top-6 -right-3 text-amber-200 text-xs pointer-events-none"
-                    >
-                      ✨
-                    </motion.span>
                   </>
                 )}
 
@@ -563,22 +672,43 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
                   <div className="absolute w-2.5 h-2.5 rounded-full bg-white shadow-[0_0_10px_#ffffff]" />
                 </div>
 
-                {/* Translucent Name Pill Beneath Star */}
+                {/* Translucent Clean Name Pill Beneath Star (Pure celestial design, NO AI signs) */}
                 <motion.div
                   initial={{ opacity: 0.8 }}
                   animate={{
                     opacity: isHovered || isSelected || star.isNew ? 1 : 0.85,
                     scale: isHovered || isSelected ? 1.08 : 1,
                   }}
-                  className="mt-1.5 px-2.5 py-0.5 rounded-full bg-slate-950/75 backdrop-blur-md border border-white/15 text-[10px] sm:text-[11px] text-slate-200 font-medium whitespace-nowrap shadow-md flex items-center gap-1 group-hover:border-amber-400/50 group-hover:text-amber-200 transition-colors"
+                  className="mt-1.5 px-2.5 py-0.5 rounded-full bg-slate-950/75 backdrop-blur-md border border-white/15 text-[10px] sm:text-[11px] text-slate-200 font-medium whitespace-nowrap shadow-md flex items-center gap-1.5 group-hover:border-amber-400/50 group-hover:text-amber-200 transition-colors"
                 >
-                  <span>✨</span>
+                  <span className="text-[9px] text-amber-300">★</span>
                   <span>{star.wish.sender_name}</span>
                 </motion.div>
               </motion.div>
             </motion.div>
           );
         })}
+      </div>
+
+      {/* Aesthetic Component: Bottom-Left Celestial Horizon Seal */}
+      <div className="absolute bottom-5 left-5 z-40 pointer-events-none hidden sm:flex items-center gap-3 px-3.5 py-2 rounded-2xl bg-slate-950/65 backdrop-blur-md border border-white/10 text-xs shadow-xl">
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500/20 to-indigo-500/20 border border-amber-400/30 flex items-center justify-center text-amber-300">
+          <Compass className="w-4 h-4" />
+        </div>
+        <div className="flex flex-col text-left">
+          <span className="font-serif tracking-wider text-[11px] text-amber-200 font-medium">
+            Shams Moni’s Night Sky
+          </span>
+          <span className="text-[10px] text-slate-400 font-light">
+            30 September 2025 • Year One Orbit
+          </span>
+        </div>
+      </div>
+
+      {/* Aesthetic Component: Bottom-Right Soft Audio & Atmosphere Pill */}
+      <div className="absolute bottom-5 right-5 z-40 pointer-events-none hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-950/65 backdrop-blur-md border border-white/10 text-[11px] text-slate-400">
+        <Heart className="w-3 h-3 text-rose-400" />
+        <span>Dedicated with eternal love</span>
       </div>
 
       {/* Selected Star Wish Card Modal */}

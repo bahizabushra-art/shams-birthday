@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
-import { Sparkles, ArrowRight, ArrowLeft, Check, ShieldCheck, User, X } from 'lucide-react';
+import { Star, ArrowRight, ArrowLeft, Check, ShieldCheck, User, X } from 'lucide-react';
 import { appConfig, StarTypeConfig } from '../config/appConfig.ts';
 import { submitWish } from '../lib/api.ts';
 import { Wish } from '../types.ts';
@@ -325,7 +325,7 @@ export const GuidedWishFlow: React.FC<GuidedWishFlowProps> = ({
                 >
                   {isSubmitting ? (
                     <>
-                      <Sparkles className="w-4 h-4 animate-spin" />
+                      <Star className="w-4 h-4 animate-spin text-slate-950" />
                       <span>Releasing your star…</span>
                     </>
                   ) : (
@@ -361,7 +361,7 @@ export const GuidedWishFlow: React.FC<GuidedWishFlowProps> = ({
               </div>
 
               <h2 className="text-3xl sm:text-4xl font-serif text-slate-100 font-normal mb-3">
-                Your star is added to Shams’s sky! ✨
+                Your star is shining in Shams’s sky! 🌟
               </h2>
 
               <p className="text-slate-300 text-sm max-w-sm mx-auto font-light leading-relaxed mb-8">
