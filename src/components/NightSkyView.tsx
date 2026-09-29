@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Wish } from '../types.ts';
 import { appConfig } from '../config/appConfig.ts';
@@ -28,19 +28,25 @@ interface NightSkyViewProps {
   initialSelectedWish?: Wish | null;
 }
 
-interface SkyStar {
+interface PositionedStar {
   wish: Wish;
   x: number;
   y: number;
-  baseX: number;
-  baseY: number;
-  size: number;
+  isNew: boolean;
   symbol: string;
   glowHex: string;
-  isNew: boolean;
-  pulseOffset: number;
-  driftSpeedX: number;
-  driftSpeedY: number;
+  floatDuration: number;
+  floatDelay: number;
+}
+
+interface StardustParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  alpha: number;
+  color: string;
 }
 
 export const NightSkyView: React.FC<NightSkyViewProps> = ({
@@ -52,17 +58,38 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
   initialSelectedWish,
 }) => {
   const [selectedWish, setSelectedWish] = useState<Wish | null>(initialSelectedWish || null);
-  const [hoveredWish, setHoveredWish] = useState<{ wish: Wish; x: number; y: number } | null>(null);
+  const [hoveredWishId, setHoveredWishId] = useState<number | null>(null);
   const [showListView, setShowListView] = useState(false);
   const [isAudioActive, setIsAudioActive] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+
+  // New Star Arrival Celebration Toast
+  const [arrivalToastWish, setArrivalToastWish] = useState<Wish | null>(null);
+
+  // Dimensions
+  const [dimensions, setDimensions] = useState({
+    width: typeof window !== 'undefined' ? window.innerWidth : 1200,
+    height: typeof window !== 'undefined' ? window.innerHeight : 800,
+  });
 
   // Deletion state
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
-  const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const stardustRef = useRef<StardustParticle[]>([]);
+
+  // Listen for window resize
+  useEffect(() => {
+    const handleResize = () => {
+      setDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const toggleSound = () => {
     const active = celestialSound.toggle();
@@ -80,6 +107,60 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
     }
   }, [initialSelectedWish]);
 
+  // When newlyAddedWishId changes, trigger arrival sound & notification toast
+  useEffect(() => {
+    if (newlyAddedWishId) {
+      const arrived = wishes.find((w) => w.id === newlyAddedWishId);
+      if (arrived) {
+        setArrivalToastWish(arrived);
+        celestialSound.playStarChime();
+        const timer = setTimeout(() => {
+          setArrivalToastWish(null);
+        }, 7500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [newlyAddedWishId, wishes]);
+
+  // Calculate star positions across the celestial coordinate plane
+  const positionedStars: PositionedStar[] = useMemo(() => {
+    const { width, height } = dimensions;
+    return wishes.map((wish, idx) => {
+      const meta = getStarMeta(wish.star_type);
+      const isNew = wish.id === newlyAddedWishId;
+
+      let x = 0;
+      let y = 0;
+
+      if (isNew) {
+        // Newly added star arrives prominently near center-top
+        x = width * 0.5 + (Math.sin(idx * 2) * 25);
+        y = height * 0.38 + (Math.cos(idx * 2) * 20);
+      } else {
+        // Celestial Fibonacci spiral distribution
+        const angle = idx * 137.5 * (Math.PI / 180);
+        const r = Math.min(width, height) * 0.38 * Math.sqrt((idx + 1) / Math.max(7, wishes.length));
+        x = width / 2 + Math.cos(angle) * r + (Math.sin(idx * 3.7) * 24);
+        y = height / 2 + Math.sin(angle) * r * 0.72 + (Math.cos(idx * 3.1) * 20);
+      }
+
+      // Safe bounds within visible viewport
+      x = Math.max(80, Math.min(width - 80, x));
+      y = Math.max(115, Math.min(height - 120, y));
+
+      return {
+        wish,
+        x,
+        y,
+        isNew,
+        symbol: meta.symbol,
+        glowHex: meta.glowHex,
+        floatDuration: 4.2 + (idx % 5) * 0.6,
+        floatDelay: (idx % 4) * 0.3,
+      };
+    });
+  }, [wishes, dimensions, newlyAddedWishId]);
+
   const handleDelete = async (wishId: number) => {
     setIsDeleting(true);
     try {
@@ -96,7 +177,7 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
     }
   };
 
-  // Canvas interactive rendering
+  // Canvas background rendering: Moon, faint constellation filaments, & cursor stardust
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -104,126 +185,83 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
     if (!ctx) return;
 
     let animId: number;
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
-
-    const handleResize = () => {
-      if (!canvas) return;
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-      computeStars();
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    let skyStars: SkyStar[] = [];
-
-    const computeStars = () => {
-      skyStars = wishes.map((wish, idx) => {
-        const meta = getStarMeta(wish.star_type);
-        const isNew = wish.id === newlyAddedWishId;
-
-        let x = 0;
-        let y = 0;
-
-        if (isNew) {
-          x = width * 0.5 + (Math.random() * 40 - 20);
-          y = height * 0.38 + (Math.random() * 30 - 15);
-        } else {
-          // Golden ratio spiral distribution
-          const angle = idx * 137.5 * (Math.PI / 180);
-          const r = Math.min(width, height) * 0.42 * Math.sqrt((idx + 1) / Math.max(8, wishes.length));
-          x = width / 2 + Math.cos(angle) * r + (Math.sin(idx * 4.3) * 22);
-          y = height / 2 + Math.sin(angle) * r * 0.72 + (Math.cos(idx * 3.7) * 22);
-        }
-
-        // Keep inside bounds
-        x = Math.max(50, Math.min(width - 50, x));
-        y = Math.max(90, Math.min(height - 100, y));
-
-        return {
-          wish,
-          x,
-          y,
-          baseX: x,
-          baseY: y,
-          size: isNew ? 11 : 7.5,
-          symbol: meta.symbol,
-          glowHex: meta.glowHex,
-          isNew,
-          pulseOffset: idx * 0.45,
-          driftSpeedX: (Math.random() * 0.4 - 0.2),
-          driftSpeedY: (Math.random() * 0.4 - 0.2),
-        };
-      });
-    };
-
-    computeStars();
+    const { width, height } = dimensions;
+    canvas.width = width;
+    canvas.height = height;
 
     let frame = 0;
     const render = () => {
-      frame += 0.022;
+      frame += 0.02;
       ctx.clearRect(0, 0, width, height);
 
-      // Draw faint, dreamy constellation lines
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+      // 1. Crescent Moon in upper sky
+      const moonX = width > 768 ? width * 0.88 : width * 0.82;
+      const moonY = 85;
+      const moonRadius = 24;
+
+      const moonAura = ctx.createRadialGradient(moonX, moonY, 4, moonX, moonY, moonRadius * 4.5);
+      moonAura.addColorStop(0, 'rgba(254, 243, 199, 0.18)');
+      moonAura.addColorStop(0.5, 'rgba(199, 210, 254, 0.07)');
+      moonAura.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = moonAura;
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, moonRadius * 4.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.save();
+      ctx.fillStyle = '#fef3c7';
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, moonRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath();
+      ctx.arc(moonX - 9, moonY - 5, moonRadius * 0.95, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // 2. Interactive user cursor / touch stardust motes
+      const particles = stardustRef.current;
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= 0.016;
+
+        if (p.alpha <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.alpha;
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // 3. Constellation filaments connecting stars
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.14)';
       ctx.lineWidth = 1;
-      for (let i = 0; i < skyStars.length; i++) {
-        for (let j = i + 1; j < skyStars.length; j++) {
-          const dx = skyStars[i].x - skyStars[j].x;
-          const dy = skyStars[i].y - skyStars[j].y;
+      for (let i = 0; i < positionedStars.length; i++) {
+        for (let j = i + 1; j < positionedStars.length; j++) {
+          const dx = positionedStars[i].x - positionedStars[j].x;
+          const dy = positionedStars[i].y - positionedStars[j].y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 155) {
+          if (dist < 170) {
             ctx.beginPath();
-            ctx.moveTo(skyStars[i].x, skyStars[i].y);
-            ctx.lineTo(skyStars[j].x, skyStars[j].y);
+            ctx.moveTo(positionedStars[i].x, positionedStars[i].y);
+            ctx.lineTo(positionedStars[j].x, positionedStars[j].y);
             ctx.stroke();
+
+            const midX = (positionedStars[i].x + positionedStars[j].x) / 2;
+            const midY = (positionedStars[i].y + positionedStars[j].y) / 2;
+            ctx.beginPath();
+            ctx.arc(midX, midY, 1.2, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(254, 240, 138, 0.45)';
+            ctx.fill();
           }
         }
-      }
-
-      // Draw each wish star
-      for (const star of skyStars) {
-        // Soft floating drift
-        star.x = star.baseX + Math.sin(frame * 0.8 + star.pulseOffset) * 6;
-        star.y = star.baseY + Math.cos(frame * 0.8 + star.pulseOffset) * 5;
-
-        const pulse = Math.sin(frame + star.pulseOffset) * 2;
-        const currentRadius = star.size + pulse;
-
-        // Big outer aura if newly created
-        if (star.isNew) {
-          const auraGrad = ctx.createRadialGradient(star.x, star.y, 1, star.x, star.y, currentRadius * 5.5);
-          auraGrad.addColorStop(0, 'rgba(251, 191, 36, 0.5)');
-          auraGrad.addColorStop(0.5, 'rgba(251, 191, 36, 0.18)');
-          auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-          ctx.fillStyle = auraGrad;
-          ctx.beginPath();
-          ctx.arc(star.x, star.y, currentRadius * 5.5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        // Multi-layered warm glowing corona
-        const glowGrad = ctx.createRadialGradient(star.x, star.y, 1, star.x, star.y, currentRadius * 3.6);
-        glowGrad.addColorStop(0, star.glowHex + 'dd');
-        glowGrad.addColorStop(0.5, star.glowHex + '44');
-        glowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = glowGrad;
-        ctx.beginPath();
-        ctx.arc(star.x, star.y, currentRadius * 3.6, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Bright sparkling core
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(star.x, star.y, Math.max(3, currentRadius * 0.65), 0, Math.PI * 2);
-        ctx.fill();
-
-        // Soft sender name label under each star
-        ctx.font = '10px "Plus Jakarta Sans", system-ui, sans-serif';
-        ctx.fillStyle = 'rgba(226, 232, 240, 0.75)';
-        ctx.textAlign = 'center';
-        ctx.fillText(star.wish.sender_name, star.x, star.y + currentRadius + 14);
       }
 
       animId = requestAnimationFrame(render);
@@ -231,7 +269,7 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
 
     render();
 
-    // Mouse & Touch interaction
+    // Cursor stardust generator
     const getPos = (e: MouseEvent | TouchEvent) => {
       const rect = canvas.getBoundingClientRect();
       const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
@@ -242,51 +280,36 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
       };
     };
 
+    const addStardust = (x: number, y: number) => {
+      const colors = ['#fde68a', '#c7d2fe', '#fbcfe8', '#ffffff'];
+      for (let i = 0; i < 2; i++) {
+        stardustRef.current.push({
+          x: x + (Math.random() * 14 - 7),
+          y: y + (Math.random() * 14 - 7),
+          vx: Math.random() * 1.2 - 0.6,
+          vy: Math.random() * -1.2 - 0.2,
+          size: Math.random() * 2 + 1,
+          alpha: 0.85,
+          color: colors[Math.floor(Math.random() * colors.length)],
+        });
+      }
+      if (stardustRef.current.length > 90) {
+        stardustRef.current.splice(0, 15);
+      }
+    };
+
     const handleMouseMove = (e: MouseEvent) => {
       const pos = getPos(e);
-      let found: SkyStar | null = null;
-      for (const s of skyStars) {
-        const dx = pos.x - s.x;
-        const dy = pos.y - s.y;
-        if (Math.sqrt(dx * dx + dy * dy) < 28) {
-          found = s;
-          break;
-        }
-      }
-
-      if (found) {
-        canvas.style.cursor = 'pointer';
-        setHoveredWish({ wish: found.wish, x: found.x, y: found.y });
-      } else {
-        canvas.style.cursor = 'default';
-        setHoveredWish(null);
-      }
+      addStardust(pos.x, pos.y);
     };
 
-    const handleCanvasClick = (e: MouseEvent | TouchEvent) => {
-      const pos = getPos(e);
-      for (const s of skyStars) {
-        const dx = pos.x - s.x;
-        const dy = pos.y - s.y;
-        if (Math.sqrt(dx * dx + dy * dy) < 30) {
-          setSelectedWish(s.wish);
-          break;
-        }
-      }
-    };
-
-    canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('click', handleCanvasClick);
-    canvas.addEventListener('touchstart', handleCanvasClick, { passive: true });
+    window.addEventListener('mousemove', handleMouseMove);
 
     return () => {
-      window.removeEventListener('resize', handleResize);
-      canvas.removeEventListener('mousemove', handleMouseMove);
-      canvas.removeEventListener('click', handleCanvasClick);
-      canvas.removeEventListener('touchstart', handleCanvasClick);
+      window.removeEventListener('mousemove', handleMouseMove);
       cancelAnimationFrame(animId);
     };
-  }, [wishes, newlyAddedWishId]);
+  }, [dimensions, positionedStars]);
 
   const copyWishLink = async (id: number) => {
     const url = `${window.location.origin}/wish/${id}`;
@@ -315,13 +338,13 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
   };
 
   return (
-    <div ref={containerRef} className="fixed inset-0 z-20 flex flex-col bg-[#05070e] text-slate-100 overflow-hidden">
-      {/* Canvas Night Sky */}
-      <canvas ref={canvasRef} className="absolute inset-0 block w-full h-full pointer-events-auto" />
+    <div className="fixed inset-0 z-20 flex flex-col bg-[#05070e] text-slate-100 overflow-hidden select-none">
+      {/* Canvas Night Sky Backdrop (Nebula, Moon, Constellations, Stardust) */}
+      <canvas ref={canvasRef} className="absolute inset-0 block w-full h-full pointer-events-none" />
 
       {/* Top Navigation Bar */}
-      <div className="relative z-30 px-4 sm:px-8 py-4 flex items-center justify-between pointer-events-none">
-        <div className="flex items-center gap-3 pointer-events-auto">
+      <div className="relative z-40 px-4 sm:px-8 py-4 flex items-center justify-between pointer-events-none">
+        <div className="flex items-center gap-2.5 pointer-events-auto">
           <button
             onClick={onGoHome}
             className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/70 backdrop-blur-md border border-white/10 hover:border-white/20 text-xs sm:text-sm text-slate-300 hover:text-white transition-all cursor-pointer shadow-lg"
@@ -371,40 +394,192 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
       </div>
 
       {/* Floating Instructions */}
-      <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 pointer-events-none text-center">
+      <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 pointer-events-none text-center">
         <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-slate-950/70 backdrop-blur-md border border-white/10 text-[11px] sm:text-xs text-slate-300 shadow-md">
           <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-          <span>Tap or click any star to read the blessing</span>
+          <span>Tap any floating star to read its blessing</span>
         </div>
       </div>
 
-      {/* Hover preview tooltip */}
+      {/* New Star Arrival Floating Toast Banner (Framer Motion) */}
       <AnimatePresence>
-        {hoveredWish && !selectedWish && (
+        {arrivalToastWish && (
           <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+            initial={{ opacity: 0, y: -30, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            style={{
-              position: 'absolute',
-              left: `${Math.min(window.innerWidth - 270, Math.max(20, hoveredWish.x - 110))}px`,
-              top: `${Math.max(80, hoveredWish.y - 120)}px`,
-            }}
-            onClick={() => setSelectedWish(hoveredWish.wish)}
-            className="z-30 w-60 glass-panel-golden p-3 rounded-2xl border border-amber-400/40 shadow-2xl pointer-events-auto cursor-pointer"
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+            onClick={() => setSelectedWish(arrivalToastWish)}
+            className="absolute top-24 left-1/2 -translate-x-1/2 z-40 px-5 py-2.5 rounded-full bg-gradient-to-r from-amber-500/25 via-yellow-500/30 to-amber-500/25 backdrop-blur-xl border border-amber-300/40 shadow-[0_10px_35px_rgba(245,158,11,0.35)] flex items-center gap-3 cursor-pointer pointer-events-auto"
           >
-            <div className="flex items-center justify-between text-xs text-amber-300 mb-1">
-              <span className="font-semibold text-[11px] truncate">
-                {hoveredWish.wish.sender_name}
-              </span>
-              <span className="text-[10px] text-slate-400">View Star →</span>
+            <div className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center text-xs font-bold shadow-[0_0_12px_rgba(245,158,11,0.8)]">
+              ✨
             </div>
-            <p className="text-xs text-slate-100 font-serif italic line-clamp-2">
-              “{hoveredWish.wish.message}”
-            </p>
+            <div className="text-xs">
+              <span className="font-semibold text-amber-200">A new star has arrived!</span>{' '}
+              <span className="text-slate-200">From {arrivalToastWish.sender_name}</span>
+            </div>
+            <span className="text-[11px] text-amber-300 underline font-medium">Read blessing →</span>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Interactive Framer Motion Stars Layer */}
+      <div className="absolute inset-0 z-30 pointer-events-auto overflow-hidden">
+        {positionedStars.map((star, idx) => {
+          const isSelected = selectedWish?.id === star.wish.id;
+          const isHovered = hoveredWishId === star.wish.id;
+
+          return (
+            <motion.div
+              key={star.wish.id}
+              style={{
+                position: 'absolute',
+                left: `${star.x}px`,
+                top: `${star.y}px`,
+              }}
+              // Framer Motion: gentle floating entry effect when arriving in the sky
+              initial={
+                star.isNew
+                  ? {
+                      opacity: 0,
+                      scale: 0.15,
+                      y: 75,
+                      filter: 'blur(10px)',
+                    }
+                  : {
+                      opacity: 0,
+                      scale: 0.4,
+                      y: 20,
+                    }
+              }
+              animate={{
+                opacity: 1,
+                scale: 1,
+                y: 0,
+                filter: 'blur(0px)',
+              }}
+              transition={{
+                duration: star.isNew ? 1.8 : 0.8,
+                delay: star.isNew ? 0.15 : (idx % 8) * 0.08,
+                ease: [0.16, 1, 0.3, 1], // Smooth spring-like easeOut
+              }}
+              className="-translate-x-1/2 -translate-y-1/2 cursor-pointer group"
+              onClick={() => {
+                celestialSound.playStarChime();
+                setSelectedWish(star.wish);
+              }}
+              onMouseEnter={() => setHoveredWishId(star.wish.id)}
+              onMouseLeave={() => setHoveredWishId(null)}
+            >
+              {/* Continuous Gentle Floating Celestial Sway (Framer Motion) */}
+              <motion.div
+                animate={{
+                  y: [-5, 5, -5],
+                  rotate: [-1.5, 1.5, -1.5],
+                }}
+                transition={{
+                  repeat: Infinity,
+                  duration: star.floatDuration,
+                  delay: star.floatDelay,
+                  ease: 'easeInOut',
+                }}
+                whileHover={{
+                  scale: 1.3,
+                  transition: { type: 'spring', stiffness: 350, damping: 18 },
+                }}
+                whileTap={{ scale: 0.9 }}
+                className="relative flex flex-col items-center"
+              >
+                {/* For Newly Arrived Star: Gentle Floating Ripple Pulse Ring */}
+                {star.isNew && (
+                  <>
+                    <motion.div
+                      initial={{ scale: 0.8, opacity: 0.9 }}
+                      animate={{ scale: [1, 2.4, 2.8], opacity: [0.85, 0.3, 0] }}
+                      transition={{ duration: 2.2, repeat: Infinity, ease: 'easeOut' }}
+                      className="absolute -inset-4 rounded-full border border-amber-300/60 pointer-events-none"
+                    />
+                    <motion.div
+                      initial={{ scale: 0.8, opacity: 0.9 }}
+                      animate={{ scale: [1, 3.2], opacity: [0.6, 0] }}
+                      transition={{ duration: 2.2, repeat: Infinity, delay: 0.7, ease: 'easeOut' }}
+                      className="absolute -inset-6 rounded-full border border-yellow-200/40 pointer-events-none"
+                    />
+                    {/* Gentle floating sparkles popping around new arrival */}
+                    <motion.span
+                      animate={{
+                        y: [-12, -26],
+                        opacity: [0, 1, 0],
+                        scale: [0.6, 1.2, 0.8],
+                      }}
+                      transition={{ repeat: Infinity, duration: 2.4, ease: 'easeInOut' }}
+                      className="absolute -top-6 -right-3 text-amber-200 text-xs pointer-events-none"
+                    >
+                      ✨
+                    </motion.span>
+                  </>
+                )}
+
+                {/* Star Symbol Floating on Top */}
+                <motion.div
+                  animate={{
+                    y: [0, -3, 0],
+                  }}
+                  transition={{
+                    repeat: Infinity,
+                    duration: 3,
+                    ease: 'easeInOut',
+                  }}
+                  className="text-base sm:text-lg mb-0.5 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] filter"
+                >
+                  {star.symbol}
+                </motion.div>
+
+                {/* Glowing Star Body */}
+                <div className="relative flex items-center justify-center">
+                  {/* Outer Breathing Corona */}
+                  <motion.div
+                    animate={{
+                      scale: [1, 1.25, 1],
+                      opacity: [0.45, 0.75, 0.45],
+                    }}
+                    transition={{
+                      repeat: Infinity,
+                      duration: 2.8,
+                      ease: 'easeInOut',
+                      delay: star.floatDelay,
+                    }}
+                    style={{
+                      backgroundColor: star.glowHex,
+                      boxShadow: `0 0 25px 8px ${star.glowHex}88`,
+                    }}
+                    className={`rounded-full ${
+                      star.isNew ? 'w-6 h-6' : 'w-4 h-4'
+                    } blur-xs transition-transform`}
+                  />
+
+                  {/* Bright Core */}
+                  <div className="absolute w-2.5 h-2.5 rounded-full bg-white shadow-[0_0_10px_#ffffff]" />
+                </div>
+
+                {/* Translucent Name Pill Beneath Star */}
+                <motion.div
+                  initial={{ opacity: 0.8 }}
+                  animate={{
+                    opacity: isHovered || isSelected || star.isNew ? 1 : 0.85,
+                    scale: isHovered || isSelected ? 1.08 : 1,
+                  }}
+                  className="mt-1.5 px-2.5 py-0.5 rounded-full bg-slate-950/75 backdrop-blur-md border border-white/15 text-[10px] sm:text-[11px] text-slate-200 font-medium whitespace-nowrap shadow-md flex items-center gap-1 group-hover:border-amber-400/50 group-hover:text-amber-200 transition-colors"
+                >
+                  <span>✨</span>
+                  <span>{star.wish.sender_name}</span>
+                </motion.div>
+              </motion.div>
+            </motion.div>
+          );
+        })}
+      </div>
 
       {/* Selected Star Wish Card Modal */}
       <AnimatePresence>
@@ -519,7 +694,7 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
         )}
       </AnimatePresence>
 
-      {/* List View Drawer / Modal with Remove Star capability */}
+      {/* List View Drawer / Modal */}
       <AnimatePresence>
         {showListView && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">

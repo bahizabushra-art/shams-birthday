@@ -1,13 +1,7 @@
-databases:
-  - name: shams-wishes-db
-    databaseName: shams_universe
-    user: shams_user
-    plan: free
-
 services:
   - type: web
-    name: little-universe-shams-moni
-    env: node
+    name: shams-moni-1st-birthday
+    runtime: node
     plan: free
     buildCommand: npm install && npm run build
     startCommand: npm run start
@@ -15,6 +9,4 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        fromDatabase:
-          name: shams-wishes-db
-          property: connectionString
+        sync: false

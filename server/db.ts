@@ -26,6 +26,10 @@ class DatabaseManager {
     this.nextId = 1;
   }
 
+  public getIsPostgres(): boolean {
+    return this.isPostgres;
+  }
+
   public async init(): Promise<void> {
     const databaseUrl = process.env.DATABASE_URL;
     if (databaseUrl) {

@@ -63,6 +63,39 @@ class CelestialSoundManager {
     }
   }
 
+  public playStarChime(): void {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!this.audioCtx) {
+        this.audioCtx = new AudioCtx();
+      }
+      if (this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume();
+      }
+
+      const freqs = [554.37, 659.25, 880, 987.77, 1108.73, 1318.51];
+      const freq = freqs[Math.floor(Math.random() * freqs.length)];
+
+      const osc = this.audioCtx.createOscillator();
+      const gain = this.audioCtx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, this.audioCtx.currentTime);
+
+      const now = this.audioCtx.currentTime;
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.04, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
+
+      osc.connect(gain);
+      gain.connect(this.audioCtx.destination);
+
+      osc.start(now);
+      osc.stop(now + 1.85);
+    } catch {}
+  }
+
   public stop(): void {
     this.isPlaying = false;
     if (this.timer) {

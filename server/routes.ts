@@ -51,6 +51,18 @@ apiRouter.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Database connection status endpoint
+apiRouter.get('/db-status', (_req: Request, res: Response) => {
+  const isPostgres = dbManager.getIsPostgres();
+  res.json({
+    connected: isPostgres,
+    mode: isPostgres ? 'postgres' : 'memory',
+    message: isPostgres
+      ? 'Connected to Neon PostgreSQL cloud database. All wishes will persist permanently in the sky!'
+      : 'Running on memory storage. Wishes save in this session; to persist permanently across restarts, provide DATABASE_URL.',
+  });
+});
+
 // Stats endpoint
 apiRouter.get('/wishes/stats', async (_req: Request, res: Response) => {
   try {
