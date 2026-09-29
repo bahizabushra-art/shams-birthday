@@ -422,10 +422,19 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
       addStardust(pos.x, pos.y);
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
+    const handleTouch = (e: TouchEvent) => {
+      const pos = getPos(e);
+      addStardust(pos.x, pos.y);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    window.addEventListener('touchstart', handleTouch, { passive: true });
+    window.addEventListener('touchmove', handleTouch, { passive: true });
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('touchstart', handleTouch);
+      window.removeEventListener('touchmove', handleTouch);
       cancelAnimationFrame(animId);
     };
   }, [dimensions, positionedStars]);
@@ -461,54 +470,62 @@ export const NightSkyView: React.FC<NightSkyViewProps> = ({
       {/* Canvas Night Sky Backdrop (Nebula, Moon, Night Clouds, Constellations) */}
       <canvas ref={canvasRef} className="absolute inset-0 block w-full h-full pointer-events-none" />
 
-      {/* Top Navigation Bar */}
-      <div className="relative z-40 px-4 sm:px-8 py-4 flex items-center justify-between pointer-events-none">
-        <div className="flex items-center gap-2.5 pointer-events-auto">
+      {/* Top Navigation Bar - Responsively tuned for Android & Mobile */}
+      <div className="relative z-40 px-2.5 sm:px-6 md:px-8 pt-3 pb-2 sm:py-4 flex items-center justify-between pointer-events-none w-full max-w-full">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 pointer-events-auto min-w-0">
           <button
             onClick={onGoHome}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/70 backdrop-blur-md border border-white/10 hover:border-white/20 text-xs sm:text-sm text-slate-300 hover:text-white transition-all cursor-pointer shadow-lg"
+            aria-label="Back to Home"
+            className="flex items-center gap-1.5 p-2 sm:px-3.5 sm:py-1.5 rounded-full bg-slate-900/70 backdrop-blur-md border border-white/10 hover:border-white/20 text-xs sm:text-sm text-slate-300 hover:text-white transition-all cursor-pointer shadow-lg shrink-0 active:scale-95"
           >
-            <Home className="w-4 h-4" />
+            <Home className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Home</span>
           </button>
 
-          <div className="px-3.5 py-1.5 rounded-full bg-amber-500/15 backdrop-blur-md border border-amber-400/25 text-xs sm:text-sm text-amber-200 font-medium shadow-lg flex items-center gap-1.5">
+          {/* Star Counter Pill - Fits perfectly on mobile screens */}
+          <div className="px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-amber-500/15 backdrop-blur-md border border-amber-400/25 text-[11px] sm:text-xs text-amber-200 font-medium shadow-lg flex items-center gap-1.5 shrink-0 whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-            <span className="font-semibold text-amber-300">{wishes.length}</span>{' '}
-            {wishes.length === 1 ? 'Star' : 'Stars'} in Shams’s Sky
+            <span className="font-semibold text-amber-300">{wishes.length}</span>
+            <span className="hidden sm:inline">
+              {wishes.length === 1 ? 'Star' : 'Stars'} in Shams’s Sky
+            </span>
+            <span className="sm:hidden">
+              {wishes.length === 1 ? 'Star' : 'Stars'} in Sky
+            </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 pointer-events-auto">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 pointer-events-auto shrink-0">
           {/* Audio toggle */}
           <button
             onClick={toggleSound}
             aria-label="Toggle celestial audio"
-            className={`p-2 rounded-full border transition-all cursor-pointer ${
+            className={`p-2 rounded-full border transition-all cursor-pointer active:scale-95 ${
               isAudioActive
                 ? 'bg-amber-400/20 border-amber-400/40 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.3)]'
                 : 'bg-slate-900/70 border-white/10 text-slate-400 hover:text-slate-200'
             }`}
           >
-            {isAudioActive ? <Volume2 className="w-4 h-4 animate-pulse" /> : <VolumeX className="w-4 h-4" />}
+            {isAudioActive ? <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-pulse" /> : <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
           </button>
 
           {/* List View Toggle */}
           <button
             onClick={() => setShowListView(true)}
-            className="p-2 sm:px-3 sm:py-1.5 rounded-full bg-slate-900/70 backdrop-blur-md border border-white/10 hover:border-white/20 text-slate-300 hover:text-white text-xs sm:text-sm transition-all cursor-pointer flex items-center gap-1.5 shadow-lg"
+            className="p-2 sm:px-3 sm:py-1.5 rounded-full bg-slate-900/70 backdrop-blur-md border border-white/10 hover:border-white/20 text-slate-300 hover:text-white text-xs sm:text-sm transition-all cursor-pointer flex items-center gap-1.5 shadow-lg active:scale-95"
             title="Read all wishes as list"
+            aria-label="View all stars list"
           >
-            <List className="w-4 h-4" />
-            <span className="hidden sm:inline">All Stars</span>
+            <List className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span className="hidden md:inline">All Stars</span>
           </button>
 
           {/* Add a Star Button */}
           <button
             onClick={onAddNewWish}
-            className="px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 font-semibold text-xs sm:text-sm tracking-wide shadow-md hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] transition-all cursor-pointer flex items-center gap-1.5"
+            className="px-3 sm:px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 font-semibold text-xs sm:text-sm tracking-wide shadow-md hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] transition-all cursor-pointer flex items-center gap-1 shrink-0 active:scale-95"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>Add Star</span>
           </button>
         </div>

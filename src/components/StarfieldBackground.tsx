@@ -13,24 +13,58 @@ export const StarfieldBackground: React.FC = () => {
     let width = (canvas.width = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
 
+    // Parallax tracking: smooth interpolation
+    let mouseX = width / 2;
+    let mouseY = height / 2;
+    let currentOffsetX = 0;
+    let currentOffsetY = 0;
+
     const handleResize = () => {
       if (!canvas) return;
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
       initStars();
+      initNebulae();
+    };
+
+    const handlePointerMove = (e: MouseEvent | TouchEvent) => {
+      if ('touches' in e && e.touches.length > 0) {
+        mouseX = e.touches[0].clientX;
+        mouseY = e.touches[0].clientY;
+      } else if ('clientX' in e) {
+        mouseX = (e as MouseEvent).clientX;
+        mouseY = (e as MouseEvent).clientY;
+      }
     };
 
     window.addEventListener('resize', handleResize);
+    window.addEventListener('mousemove', handlePointerMove, { passive: true });
+    window.addEventListener('touchmove', handlePointerMove, { passive: true });
 
     interface Star {
       x: number;
       y: number;
+      baseX: number;
+      baseY: number;
       radius: number;
       baseAlpha: number;
       alpha: number;
       twinkleSpeed: number;
       color: string;
       hasSpike: boolean;
+      depthLayer: number; // 0 = deep distant, 1 = mid constellation, 2 = foreground brilliant
+      parallaxFactor: number;
+    }
+
+    interface NebulaCluster {
+      xRatio: number;
+      yRatio: number;
+      radiusRatio: number;
+      colorStart: string;
+      colorMid: string;
+      pulseSpeed: number;
+      pulseOffset: number;
+      parallaxFactor: number;
     }
 
     interface ShootingStarSpark {
@@ -60,30 +94,113 @@ export const StarfieldBackground: React.FC = () => {
     }
 
     let stars: Star[] = [];
+    let nebulae: NebulaCluster[] = [];
     const colors = ['#ffffff', '#fde68a', '#c7d2fe', '#e0e7ff', '#fed7aa', '#fbcfe8', '#93c5fd'];
+
+    const initNebulae = () => {
+      nebulae = [
+        // 1. Cosmic Violet Nebula (Deep space left-center)
+        {
+          xRatio: 0.28,
+          yRatio: 0.32,
+          radiusRatio: 0.52,
+          colorStart: 'rgba(99, 102, 241, 0.09)',
+          colorMid: 'rgba(139, 92, 246, 0.035)',
+          pulseSpeed: 0.0006,
+          pulseOffset: 0,
+          parallaxFactor: 0.015,
+        },
+        // 2. Solar Amber Warm Nebula (Right-center, warming Baby Shams's sky)
+        {
+          xRatio: 0.74,
+          yRatio: 0.62,
+          radiusRatio: 0.48,
+          colorStart: 'rgba(245, 158, 11, 0.08)',
+          colorMid: 'rgba(244, 63, 94, 0.03)',
+          pulseSpeed: 0.0008,
+          pulseOffset: Math.PI / 2,
+          parallaxFactor: 0.025,
+        },
+        // 3. Celestial Aurora Cyan (Top-right crown)
+        {
+          xRatio: 0.82,
+          yRatio: 0.18,
+          radiusRatio: 0.4,
+          colorStart: 'rgba(56, 189, 248, 0.07)',
+          colorMid: 'rgba(99, 102, 241, 0.025)',
+          pulseSpeed: 0.0007,
+          pulseOffset: Math.PI,
+          parallaxFactor: 0.02,
+        },
+        // 4. Soft Rose Stardust Veil (Lower-left horizon)
+        {
+          xRatio: 0.18,
+          yRatio: 0.8,
+          radiusRatio: 0.44,
+          colorStart: 'rgba(236, 72, 153, 0.06)',
+          colorMid: 'rgba(168, 85, 247, 0.02)',
+          pulseSpeed: 0.0005,
+          pulseOffset: (3 * Math.PI) / 2,
+          parallaxFactor: 0.018,
+        },
+      ];
+    };
 
     const initStars = () => {
       stars = [];
-      const starCount = Math.floor((width * height) / 2600);
+      const starCount = Math.floor((width * height) / 2200);
+
       for (let i = 0; i < starCount; i++) {
-        const baseAlpha = 0.2 + Math.random() * 0.75;
-        const radius = Math.random() < 0.85
-          ? Math.random() * 1.1 + 0.4
-          : Math.random() * 2.2 + 1.2;
+        // Divide into 3 distinct depth layers
+        const rand = Math.random();
+        let depthLayer = 0;
+        let radius = 0.5;
+        let parallaxFactor = 0.01;
+        let hasSpike = false;
+        let baseAlpha = 0.2 + Math.random() * 0.4;
+
+        if (rand < 0.6) {
+          // Layer 0: Distant micro-stars (deepest cosmic field)
+          depthLayer = 0;
+          radius = Math.random() * 0.5 + 0.35;
+          parallaxFactor = 0.012;
+          baseAlpha = 0.2 + Math.random() * 0.45;
+        } else if (rand < 0.9) {
+          // Layer 1: Mid-distance shimmering stars
+          depthLayer = 1;
+          radius = Math.random() * 0.8 + 0.8;
+          parallaxFactor = 0.028;
+          baseAlpha = 0.35 + Math.random() * 0.5;
+        } else {
+          // Layer 2: Foreground brilliant sparkling stars
+          depthLayer = 2;
+          radius = Math.random() * 1.3 + 1.6;
+          parallaxFactor = 0.06;
+          baseAlpha = 0.55 + Math.random() * 0.45;
+          hasSpike = radius > 2.0 && Math.random() < 0.5;
+        }
+
+        const rx = Math.random() * width;
+        const ry = Math.random() * height;
 
         stars.push({
-          x: Math.random() * width,
-          y: Math.random() * height,
+          x: rx,
+          y: ry,
+          baseX: rx,
+          baseY: ry,
           radius,
           baseAlpha,
           alpha: baseAlpha,
-          twinkleSpeed: (Math.random() * 0.02 + 0.006) * (Math.random() < 0.5 ? 1 : -1),
+          twinkleSpeed: (Math.random() * 0.018 + 0.005) * (Math.random() < 0.5 ? 1 : -1),
           color: colors[Math.floor(Math.random() * colors.length)],
-          hasSpike: radius > 2.2 && Math.random() < 0.35,
+          hasSpike,
+          depthLayer,
+          parallaxFactor,
         });
       }
     };
 
+    initNebulae();
     initStars();
 
     // Shooting stars pool & spark particles
@@ -100,16 +217,12 @@ export const StarfieldBackground: React.FC = () => {
     ];
 
     const spawnShootingStar = () => {
-      // Pick random origin: top, top-left, or top-right
       const palette = meteorColorPalettes[Math.floor(Math.random() * meteorColorPalettes.length)];
-      
       const startX = Math.random() < 0.6
         ? Math.random() * (width * 0.75) + width * 0.05
         : Math.random() * (width * 0.4);
-      
       const startY = Math.random() * (height * 0.35);
 
-      // Angle: graceful diagonal descent (~30deg to ~55deg)
       const angle = (Math.PI / 4) + (Math.random() * 0.35 - 0.17);
       const speed = 11 + Math.random() * 9;
       const length = 110 + Math.random() * 110;
@@ -130,7 +243,7 @@ export const StarfieldBackground: React.FC = () => {
         active: true,
       });
 
-      // 18% chance of a twin shooting star trailing nearby!
+      // 18% chance of twin meteor
       if (Math.random() < 0.18) {
         setTimeout(() => {
           shootingStars.push({
@@ -152,17 +265,15 @@ export const StarfieldBackground: React.FC = () => {
       }
     };
 
-    // Trigger occasional randomized shooting stars (every 2.5s - 5.5s)
     let timeoutId: number;
     const scheduleNextShootingStar = () => {
-      const nextDelay = 2200 + Math.random() * 3200;
+      const nextDelay = 2400 + Math.random() * 3400;
       timeoutId = window.setTimeout(() => {
         spawnShootingStar();
         scheduleNextShootingStar();
       }, nextDelay);
     };
 
-    // Spawn an initial star shortly after load
     const initialTimer = window.setTimeout(() => {
       spawnShootingStar();
       scheduleNextShootingStar();
@@ -171,70 +282,92 @@ export const StarfieldBackground: React.FC = () => {
     let frame = 0;
     const render = () => {
       frame++;
+      const time = performance.now();
+
+      // Subtle celestial autonomous drift (ensures Android phones feel dynamic even when still)
+      const autoDriftX = Math.sin(time * 0.0004) * 22;
+      const autoDriftY = Math.cos(time * 0.0003) * 15;
+
+      // Smooth parallax interpolation with pointer
+      const targetX = (mouseX - width / 2) + autoDriftX;
+      const targetY = (mouseY - height / 2) + autoDriftY;
+      currentOffsetX += (targetX - currentOffsetX) * 0.04;
+      currentOffsetY += (targetY - currentOffsetY) * 0.04;
+
       ctx.clearRect(0, 0, width, height);
 
       // Deep celestial midnight background gradient
       const skyGrad = ctx.createLinearGradient(0, 0, 0, height);
       skyGrad.addColorStop(0, '#030611');
-      skyGrad.addColorStop(0.4, '#060a1d');
-      skyGrad.addColorStop(0.75, '#050714');
+      skyGrad.addColorStop(0.38, '#060a1d');
+      skyGrad.addColorStop(0.72, '#050714');
       skyGrad.addColorStop(1, '#020308');
       ctx.fillStyle = skyGrad;
       ctx.fillRect(0, 0, width, height);
 
-      // Ambient celestial dust clouds
-      const nebula1 = ctx.createRadialGradient(width * 0.25, height * 0.3, 10, width * 0.25, height * 0.3, width * 0.48);
-      nebula1.addColorStop(0, 'rgba(99, 102, 241, 0.08)');
-      nebula1.addColorStop(0.6, 'rgba(56, 189, 248, 0.03)');
-      nebula1.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = nebula1;
-      ctx.fillRect(0, 0, width, height);
+      // 1. Render Subtle Parallax Nebula Layers
+      for (const neb of nebulae) {
+        const pulse = Math.sin(time * neb.pulseSpeed + neb.pulseOffset) * 0.12 + 1;
+        const nebX = (width * neb.xRatio) - (currentOffsetX * neb.parallaxFactor);
+        const nebY = (height * neb.yRatio) - (currentOffsetY * neb.parallaxFactor);
+        const nebRadius = (Math.max(width, height) * neb.radiusRatio) * pulse;
 
-      const nebula2 = ctx.createRadialGradient(width * 0.75, height * 0.65, 10, width * 0.75, height * 0.65, width * 0.45);
-      nebula2.addColorStop(0, 'rgba(245, 158, 11, 0.07)');
-      nebula2.addColorStop(0.5, 'rgba(236, 72, 153, 0.03)');
-      nebula2.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = nebula2;
-      ctx.fillRect(0, 0, width, height);
+        const nebGrad = ctx.createRadialGradient(nebX, nebY, 15, nebX, nebY, nebRadius);
+        nebGrad.addColorStop(0, neb.colorStart);
+        nebGrad.addColorStop(0.55, neb.colorMid);
+        nebGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
-      // Render static background twinkling stars
+        ctx.fillStyle = nebGrad;
+        ctx.fillRect(0, 0, width, height);
+      }
+
+      // 2. Render Twinkling Depth Layers (Layer 0, Layer 1, Layer 2)
       for (const s of stars) {
+        // Natural twinkle
         s.alpha += s.twinkleSpeed;
         if (s.alpha > 0.98 || s.alpha < 0.15) {
           s.twinkleSpeed = -s.twinkleSpeed;
         }
 
+        // Apply depth-based parallax displacement
+        const posX = s.baseX - (currentOffsetX * s.parallaxFactor);
+        const posY = s.baseY - (currentOffsetY * s.parallaxFactor);
+
+        // Wrap around smoothly across screen bounds
+        let renderX = (posX % width + width) % width;
+        let renderY = (posY % height + height) % height;
+
         ctx.beginPath();
-        ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+        ctx.arc(renderX, renderY, s.radius, 0, Math.PI * 2);
         ctx.fillStyle = s.color;
         ctx.globalAlpha = Math.max(0.08, Math.min(1, s.alpha));
         ctx.fill();
 
-        // Soft halo on brighter stars
-        if (s.radius > 1.6) {
+        // Foreground stars halo (Layer 2)
+        if (s.depthLayer === 2) {
           ctx.beginPath();
-          ctx.arc(s.x, s.y, s.radius * 3, 0, Math.PI * 2);
+          ctx.arc(renderX, renderY, s.radius * 2.8, 0, Math.PI * 2);
           ctx.fillStyle = s.color;
           ctx.globalAlpha = s.alpha * 0.22;
           ctx.fill();
-        }
 
-        // Cross diffraction flare on brightest stars
-        if (s.hasSpike && s.alpha > 0.6) {
-          ctx.strokeStyle = s.color;
-          ctx.lineWidth = 0.8;
-          ctx.globalAlpha = (s.alpha - 0.4) * 0.6;
-          const spikeLen = s.radius * 3.8;
-          ctx.beginPath();
-          ctx.moveTo(s.x - spikeLen, s.y);
-          ctx.lineTo(s.x + spikeLen, s.y);
-          ctx.moveTo(s.x, s.y - spikeLen);
-          ctx.lineTo(s.x, s.y + spikeLen);
-          ctx.stroke();
+          // Cross diffraction flare on brightest foreground stars
+          if (s.hasSpike && s.alpha > 0.55) {
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth = 0.75;
+            ctx.globalAlpha = (s.alpha - 0.4) * 0.55;
+            const spikeLen = s.radius * 3.6;
+            ctx.beginPath();
+            ctx.moveTo(renderX - spikeLen, renderY);
+            ctx.lineTo(renderX + spikeLen, renderY);
+            ctx.moveTo(renderX, renderY - spikeLen);
+            ctx.lineTo(renderX, renderY + spikeLen);
+            ctx.stroke();
+          }
         }
       }
 
-      // Render falling stardust sparks from shooting star trails
+      // 3. Render falling stardust sparks from shooting star trails
       for (let i = sparks.length - 1; i >= 0; i--) {
         const spark = sparks[i];
         spark.x += spark.vx;
@@ -253,7 +386,7 @@ export const StarfieldBackground: React.FC = () => {
         ctx.fill();
       }
 
-      // Render active shooting stars
+      // 4. Render active shooting stars
       for (let i = shootingStars.length - 1; i >= 0; i--) {
         const s = shootingStars[i];
         if (!s.active) {
@@ -325,6 +458,8 @@ export const StarfieldBackground: React.FC = () => {
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('mousemove', handlePointerMove);
+      window.removeEventListener('touchmove', handlePointerMove);
       clearTimeout(initialTimer);
       clearTimeout(timeoutId);
       cancelAnimationFrame(animationFrameId);
